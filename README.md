@@ -1,4 +1,7 @@
-# robocar
+# ECE-MAE148 - Fall26 Team-9
+Documenting Code and Design of Team 9 for Building Autonomous Vehicle for ECE/MAE148 F26 @ UCSD
+
+## Car software
 
 Donkeycar 5.4 car folders for a Raspberry Pi 5 car with a VESC motor controller,
 OAK-D Lite camera and Logitech F710 gamepad.
