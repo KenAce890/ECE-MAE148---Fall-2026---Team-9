@@ -19,3 +19,4 @@ Notes:
 - The OAK-D Lite needs `depthai` 2.33 (2.21 returns blank frames) and the Pi 5's
   `usb_max_current_enable=1`.
 - `data/`, `models/` and `logs/` are not tracked.
+- `donkeycar-patches/` has fixes the car needs on top of donkeycar 5.4.0; see its README.

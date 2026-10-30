@@ -1,0 +1,88 @@
+diff --git a/donkeycar/parts/actuator.py b/donkeycar/parts/actuator.py
+index 848feebc..75d090ba 100644
+--- a/donkeycar/parts/actuator.py
++++ b/donkeycar/parts/actuator.py
+@@ -222,15 +222,48 @@ class VESC:
+         self.steering_offset = steering_offset
+         self.percent = percent
+         
+-        try:
+-            self.v = pyvesc.VESC(serial_port, has_sensor, start_heartbeat, baudrate, timeout)
+-        except Exception as err:
+-            print("\n\n\n\n", err)
+-            print("\n\nto fix permission denied errors, try running the following command:")
+-            print("sudo chmod a+rw {}".format(serial_port), "\n\n\n\n")
+-            time.sleep(1)
+-            raise
+-        
++        # pyvesc decodes a reply as soon as a few bytes arrive, so a reply split
++        # across USB reads fails with "invalid literal for int() with base 10:
++        # 'None'" when it checks the firmware version. Keep reading until a
++        # whole packet decodes. Start the heartbeat only once connected so a
++        # failed attempt doesn't leave a thread running that blocks exit.
++        from pyvesc.protocol.interface import decode
++
++        class _VESC(pyvesc.VESC):
++            def write(self, data, num_read_bytes=None):
++                self.serial_port.write(data)
++                if num_read_bytes is None:
++                    return None
++                buf = b''
++                deadline = time.time() + 0.5
++                while time.time() < deadline:
++                    buf += self.serial_port.read(self.serial_port.in_waiting or 1)
++                    response, consumed = decode(buf)
++                    if response is not None:
++                        return response
++                return None
++
++        retries = 5
++        for attempt in range(1, retries + 1):
++            try:
++                self.v = _VESC(serial_port, has_sensor, False, baudrate, timeout)
++                break
++            except ValueError:
++                print("VESC did not answer cleanly (attempt {}/{}), retrying..."
++                      .format(attempt, retries))
++                time.sleep(0.5)
++            except Exception as err:
++                print("\n\n\n\n", err)
++                print("\n\nto fix permission denied errors, try running the following command:")
++                print("sudo chmod a+rw {}".format(serial_port), "\n\n\n\n")
++                time.sleep(1)
++                raise
++        else:
++            raise RuntimeError("Could not connect to VESC on {}. Is the battery on "
++                               "and USB plugged in?".format(serial_port))
++        if start_heartbeat:
++            self.v.start_heartbeat()
++
+     def run(self, angle, throttle):
+         self.v.set_servo((angle * self.steering_scale) + self.steering_offset)
+         self.v.set_duty_cycle(throttle*self.percent)
+diff --git a/donkeycar/parts/tub_v2.py b/donkeycar/parts/tub_v2.py
+index d33b353e..2384f46b 100644
+--- a/donkeycar/parts/tub_v2.py
++++ b/donkeycar/parts/tub_v2.py
+@@ -70,7 +70,7 @@ class Tub(object):
+                 elif input_type == 'gray16_array':
+                     # save np.uint16 as a 16bit png
+                     image = Image.fromarray(np.uint16(value))
+-                    name = Tub._image_file_name(self.manifest.current_index, key, ext='.png')
++                    name = Tub._image_file_name(self.manifest.current_index, key, extension='.png')
+                     image_path = os.path.join(self.images_base_path, name)
+                     image.save(image_path)
+                     contents[key]=name
+diff --git a/donkeycar/templates/complete.py b/donkeycar/templates/complete.py
+index b9b17cfa..a6dddd6f 100644
+--- a/donkeycar/templates/complete.py
++++ b/donkeycar/templates/complete.py
+@@ -874,6 +874,8 @@ def add_camera(V, cfg, camera_type):
+     elif cfg.CAMERA_TYPE == "OAKD":
+         from donkeycar.parts.oak_d import OakD
+         cam = OakD(
++            width=cfg.IMAGE_W,
++            height=cfg.IMAGE_H,
+             rgb_output_mode=cfg.OAKD_RGB_OUTPUT_MODE,
+             rgb_isp_scale_num=cfg.OAKD_RGB_ISP_SCALE_NUM,
+             rgb_isp_scale_den=cfg.OAKD_RGB_ISP_SCALE_DEN,
