@@ -6,13 +6,16 @@ Usage:
     python claude_drive.py status
     python claude_drive.py look [OUT]
     python claude_drive.py step STEERING THROTTLE SECONDS [OUT]
+    python claude_drive.py go SECONDS [SPEED]
     python claude_drive.py stop
 
 look   saves the latest camera frame to OUT (default /dev/shm/claude_pilot/look.jpg)
-step   steers to STEERING (-1 left .. 1 right) and applies THROTTLE for SECONDS,
-       waits until the car has stopped, then saves a fresh frame to OUT.
-       Refused unless the driver has handed over with the controller.
-stop   cancels any running step immediately.
+step   (drive mode) steers to STEERING (-1 left .. 1 right) and applies THROTTLE
+       for SECONDS, waits until the car has stopped, then saves a fresh frame to OUT.
+go     (supervise mode, manage.py started with --model) lets the CNN drive for
+       SECONDS at SPEED x its own throttle (0..1, default 1). Renew before it runs out.
+step and go are refused unless the driver has handed over with the controller.
+stop   cancels any running step or go immediately.
 """
 import json
 import os
@@ -22,6 +25,7 @@ import time
 
 DIR = '/dev/shm/claude_pilot'
 CMD = os.path.join(DIR, 'cmd.json')
+LEASE = os.path.join(DIR, 'lease.json')
 STATUS = os.path.join(DIR, 'status.json')
 FRAME = os.path.join(DIR, 'frame.jpg')
 DEFAULT_OUT = os.path.join(DIR, 'look.jpg')
@@ -47,19 +51,32 @@ def wait_for_frame_after(t, timeout=3.0):
 
 def save_frame(out, s):
     shutil.copyfile(FRAME, out)
-    print(f"frame {out}  age {time.time() - s['frame_time']:.2f}s  mode {s['mode']}  "
-          f"steering {s['steering']:+.2f}  throttle {s['throttle']:.2f}")
+    steering = s.get('steering')
+    line = (f"frame {out}  age {time.time() - s['frame_time']:.2f}s  mode {s['mode']}  "
+            f"steering {steering if steering is None else f'{steering:+.2f}'}  throttle {s['throttle']:.2f}")
+    if s.get('role') == 'supervise':
+        line += f"  speed {s['speed']:.2f}"
+    print(line)
+
+
+def write_json(path, data):
+    tmp = path + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump(data, f)
+    os.replace(tmp, path)
+    return data
 
 
 def write_cmd(steering, throttle, seconds):
     now = time.time()
-    cmd = {'id': int(now * 1000), 'created': now, 'until': now + seconds,
-           'steering': steering, 'throttle': throttle}
-    tmp = CMD + '.tmp'
-    with open(tmp, 'w') as f:
-        json.dump(cmd, f)
-    os.replace(tmp, CMD)
-    return cmd
+    return write_json(CMD, {'id': int(now * 1000), 'created': now, 'until': now + seconds,
+                            'steering': steering, 'throttle': throttle})
+
+
+def write_lease(seconds, speed):
+    now = time.time()
+    return write_json(LEASE, {'id': int(now * 1000), 'created': now, 'until': now + seconds,
+                              'speed': speed})
 
 
 def main(argv):
@@ -92,8 +109,25 @@ def main(argv):
         time.sleep(max(0.0, cmd['until'] - time.time()) + 0.4)  # run, then let the car coast to a stop
         save_frame(out, wait_for_frame_after(time.time()))
 
+    elif action == 'go':
+        seconds = float(argv[1])
+        speed = float(argv[2]) if len(argv) > 2 else 1.0
+        s = status()
+        if s.get('role') != 'supervise':
+            sys.exit("Not in supervise mode: start manage.py with --model.")
+        if s['mode'] == 'user':
+            sys.exit("Not handed over: the driver must press Start on the controller first.")
+        lease = write_lease(seconds, speed)
+        deadline = time.time() + 1.0
+        while status().get('cmd_id') != lease['id']:
+            if time.time() > deadline:
+                sys.exit("Go not picked up (mode changed or drive loop stalled).")
+            time.sleep(0.02)
+        print(f"go: CNN driving for {seconds:.1f}s at speed {speed:.2f}")
+
     elif action == 'stop':
         write_cmd(0.0, 0.0, 0.0)
+        write_lease(0.0, 0.0)
         print("stopped")
 
     else:

@@ -1,5 +1,6 @@
 """
 ClaudePilot: lets Claude drive in short, self-expiring steps from camera frames.
+ClaudeSupervisor (below): the CNN drives and Claude supervises it.
 
 The vehicle loop calls run() every frame. It
   - saves the latest camera frame (and a status file) to CLAUDE_DIR so the
@@ -64,13 +65,7 @@ class ClaudePilot:
 
     def run(self, img, mode):
         now = time.time()
-
-        # track hand-over from the controller
-        mode = mode or 'user'
-        if mode != self.mode:
-            self.engaged_at = now if mode != 'user' else None
-            self.mode = mode
-
+        self._track_mode(mode, now)
         self._read_cmd()
         throttle = 0.0
         active = False
@@ -85,19 +80,79 @@ class ClaudePilot:
         if self.engaged_at is None:
             self.steering = 0.0
 
-        if img is not None and now - self.last_frame_time >= self.frame_period:
-            self.last_frame_time = now
-            frame = img[:, :, ::-1] if self.swap_rb else img
-            self._write_atomic('frame.jpg', lambda p: Image.fromarray(np.uint8(frame)).save(p, 'JPEG', quality=90))
-            status = {
-                'frame_time': now,
-                'mode': self.mode,
-                'engaged_at': self.engaged_at,
-                'cmd_id': cmd.get('id') if cmd else None,
-                'active': active,
-                'steering': self.steering,
-                'throttle': throttle,
-            }
-            self._write_atomic('status.json', lambda p: open(p, 'w').write(json.dumps(status)))
-
+        self._save_frame(img, now, {
+            'role': 'drive',
+            'cmd_id': cmd.get('id') if cmd else None,
+            'active': active,
+            'steering': self.steering,
+            'throttle': throttle,
+        })
         return self.steering, throttle
+
+    def _track_mode(self, mode, now):
+        """Note when the driver hands over (mode leaves 'user') or takes back control."""
+        mode = mode or 'user'
+        if mode != self.mode:
+            self.engaged_at = now if mode != 'user' else None
+            self.mode = mode
+
+    def _save_frame(self, img, now, status):
+        if img is None or now - self.last_frame_time < self.frame_period:
+            return
+        self.last_frame_time = now
+        frame = img[:, :, ::-1] if self.swap_rb else img
+        self._write_atomic('frame.jpg', lambda p: Image.fromarray(np.uint8(frame)).save(p, 'JPEG', quality=90))
+        status = dict(status, frame_time=now, mode=self.mode, engaged_at=self.engaged_at)
+        self._write_atomic('status.json', lambda p: open(p, 'w').write(json.dumps(status)))
+
+
+class ClaudeSupervisor(ClaudePilot):
+    """
+    The CNN drives; Claude supervises.
+
+    Passes the model's pilot/angle and pilot/throttle through, but only while
+    Claude holds an unexpired "go" lease (lease.json, written by
+    `claude_drive.py go`). The lease also sets a speed factor (0..1) applied to
+    the model's throttle. When the lease runs out (Claude stopped checking in,
+    or sent `stop`), throttle drops to 0. The same hand-over rules as
+    ClaudePilot apply: leases written before the driver pressed Start are
+    ignored, and a lease lasts at most CLAUDE_MAX_LEASE_S seconds.
+
+    Use Full Auto: in Auto Steer the driver's stick sets the throttle, so a
+    stop from Claude has no effect.
+    """
+    def __init__(self, cfg):
+        super().__init__(cfg)
+        self.max_lease_s = cfg.CLAUDE_MAX_LEASE_S
+        self.cmd_path = os.path.join(self.dir, 'lease.json')
+        if os.path.exists(self.cmd_path):
+            os.remove(self.cmd_path)
+
+    def run(self, img, mode, pilot_angle, pilot_throttle):
+        now = time.time()
+        self._track_mode(mode, now)
+        self._read_cmd()
+
+        lease = self.cmd
+        speed = 0.0
+        if (lease is not None and self.engaged_at is not None
+                and lease.get('created', 0) >= self.engaged_at):
+            until = min(lease.get('until', 0), lease.get('created', 0) + self.max_lease_s)
+            if now < until:
+                speed = float(np.clip(lease.get('speed', 1.0), 0.0, 1.0))
+
+        throttle = 0.0
+        if pilot_throttle is not None:
+            throttle = float(np.clip(pilot_throttle * speed, 0.0, self.max_throttle))
+
+        self._save_frame(img, now, {
+            'role': 'supervise',
+            'cmd_id': lease.get('id') if lease else None,
+            'active': speed > 0,
+            'speed': speed,
+            'model_steering': pilot_angle,
+            'model_throttle': pilot_throttle,
+            'steering': pilot_angle,
+            'throttle': throttle,
+        })
+        return pilot_angle, throttle

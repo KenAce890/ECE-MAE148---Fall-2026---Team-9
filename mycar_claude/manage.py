@@ -412,20 +412,36 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                   inputs=['cam/image_array'], outputs=['cam/image_array_trans'])
             inputs = ['cam/image_array_trans'] + inputs[1:]
 
+        if getattr(cfg, 'CLAUDE_PILOT', False):
+            # the camera runs at Claude's viewing size; give the CNN the size it was trained on
+            import numpy as np
+            from PIL import Image
+            size = (cfg.CLAUDE_MODEL_W, cfg.CLAUDE_MODEL_H)
+            V.add(Lambda(lambda img: None if img is None else np.asarray(Image.fromarray(img).resize(size))),
+                  inputs=[inputs[0]], outputs=['cam/image_array_model'], run_condition='run_pilot')
+            inputs = ['cam/image_array_model'] + inputs[1:]
+
         V.add(kl, inputs=inputs, outputs=outputs, run_condition='run_pilot')
 
     #
     # stop at a stop sign
     #
     #
-    # Claude drives from camera frames in short, self-expiring steps
-    # (see claude_pilot.py); only after the driver hands over with Start
+    # Claude drives from camera frames in short, self-expiring steps, or, with
+    # --model, supervises the CNN (see claude_pilot.py); only after the driver
+    # hands over with Start
     #
     if getattr(cfg, 'CLAUDE_PILOT', False):
-        from claude_pilot import ClaudePilot
-        V.add(ClaudePilot(cfg),
-              inputs=['cam/image_array', 'user/mode'],
-              outputs=['pilot/angle', 'pilot/throttle'])
+        if model_path:
+            from claude_pilot import ClaudeSupervisor
+            V.add(ClaudeSupervisor(cfg),
+                  inputs=['cam/image_array', 'user/mode', 'pilot/angle', 'pilot/throttle'],
+                  outputs=['pilot/angle', 'pilot/throttle'])
+        else:
+            from claude_pilot import ClaudePilot
+            V.add(ClaudePilot(cfg),
+                  inputs=['cam/image_array', 'user/mode'],
+                  outputs=['pilot/angle', 'pilot/throttle'])
 
     if cfg.STOP_SIGN_DETECTOR:
         from donkeycar.parts.object_detector.stop_sign_detector \

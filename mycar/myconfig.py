@@ -35,8 +35,8 @@
 CAMERA_TYPE = "OAKD"
 # 
 # # The resolution of the input image. Higher resolution needs more processing power.
-IMAGE_W = 1280
-IMAGE_H = 960
+IMAGE_W = 160
+IMAGE_H = 120
 # 
 # # The depth of the image. 3 for RGB, 1 for Greyscale.
 # IMAGE_DEPTH = 3

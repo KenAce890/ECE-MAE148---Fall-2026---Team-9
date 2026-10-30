@@ -10,7 +10,7 @@ OAK-D Lite camera and Logitech F710 gamepad.
 |---|---|---|
 | `mycar/` | Main car: manual driving, data recording, driving trained models | `python manage.py drive [--model models/mypilot.tflite --type tflite_linear]` |
 | `mycar_cv/` | Follows the yellow center line with OpenCV (no training) | `python manage.py drive`, then Start |
-| `mycar_claude/` | Lets Claude drive in short, self-expiring steps from camera frames | `python manage.py drive`, then Start; drive with `claude_drive.py` |
+| `mycar_claude/` | Claude drives in short, self-expiring steps; or, with `--model`, the CNN drives and Claude supervises (go/stop/speed) | `python manage.py drive [--model ../mycar/models/mypilot.tflite --type tflite_linear]`, then Start; Claude uses `claude_drive.py` |
 
 Notes:
 - `my_joystick.py` maps the F710 in DirectInput (D) mode (`CONTROLLER_TYPE = 'custom'`).

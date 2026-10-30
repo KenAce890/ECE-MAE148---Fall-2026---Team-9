@@ -836,6 +836,9 @@ CLAUDE_PILOT = True
 CLAUDE_DIR = '/dev/shm/claude_pilot'
 CLAUDE_MAX_THROTTLE = 0.5     # pilot throttle cap; x VESC_MAX_SPEED_PERCENT 0.2 = 10% duty
 CLAUDE_MAX_STEP_S = 1.0       # longest burst one command can run
-CLAUDE_FRAME_HZ = 5
+CLAUDE_FRAME_HZ = 10
 CLAUDE_SWAP_RB = True         # the OAK-D part hands over BGR; swap so saved frames have true colours
 AUTO_RECORD_ON_THROTTLE = False   # don't record these sessions
+CLAUDE_MAX_LEASE_S = 8.0      # supervise mode: longest "go" Claude can give the CNN before checking again
+CLAUDE_MODEL_W = 160          # supervise mode: image size the CNN was trained on
+CLAUDE_MODEL_H = 120
