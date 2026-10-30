@@ -732,7 +732,7 @@ BEHAVIOR_LED_COLORS = [(0, 10, 0), (10, 0, 0)]
 #to predict the segement of the course, where the course is divided into NUM_LOCATIONS segments.
 TRAIN_LOCALIZER = False
 NUM_LOCATIONS = 10
-BUTTON_PRESS_NEW_TUB = False
+BUTTON_PRESS_NEW_TUB = True
 
 
 # PATH FOLLOWING (GPS or Odometry based)
@@ -765,7 +765,7 @@ AUTO_RECORD_ON_THROTTLE = True
 RECORD_DURING_AI = False
 
 # Create a new directory for every session (True) or append to existing (False).
-AUTO_CREATE_NEW_TUB = False
+AUTO_CREATE_NEW_TUB = True
 
 # Console logging settings.
 HAVE_CONSOLE_LOGGING = True

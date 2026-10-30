@@ -1,8 +1,9 @@
 # recorded driving data, trained models and logs are large; keep them off GitHub
-*/data/
+*/data*/
 */models/
 */logs/
 
 *.bak
 __pycache__/
 *.pyc
+.cache/
