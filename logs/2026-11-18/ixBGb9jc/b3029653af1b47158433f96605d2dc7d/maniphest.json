@@ -1,0 +1,18 @@
+{
+    "channels": [
+        "console.txt",
+        "core",
+        "input.raw",
+        "runner.txt"
+    ],
+    "creation_gps_time": 1479022785.260529,
+    "creation_time": 1794987567.260529,
+    "device_id": "ixBGb9jc",
+    "device_type": "LG69T_AM",
+    "device_version": null,
+    "guid": "b3029653af1b47158433f96605d2dc7d",
+    "log_sequence_num": 3,
+    "prev_guid": "8530fcdb268d4336ab32ab388c839d38",
+    "sw_version": "lg69t-am-v0.14.0",
+    "system_config_path": null
+}
